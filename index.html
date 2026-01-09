@@ -41,10 +41,12 @@
 <p class="p1">let answers = [];</p>
 <p class="p1">let scores = {};</p>
 <p class="p2"><br></p>
-<p class="p1">fetch(QUESTIONS_URL)</p>
-<p class="p1"><span class="Apple-converted-space">  </span>.then(r =&gt; r.json())</p>
-<p class="p1"><span class="Apple-converted-space">  </span>.then(q =&gt; { questions = q; nextQuestion(); });</p>
-<p class="p2"><br></p>
+questions = [
+  { id: 1, text: "Aimes-tu le chocolat ?", type: "yesno", dimension: "gout", trigger_rule: "always" },
+  { id: 2, text: "Es-tu plutôt matin ou soir ?", type: "choices", options: ["Matin","Soir"], dimension: "rythme", trigger_rule: "always" },
+  { id: 3, text: "Combien d'heures dors-tu ?", type: "scale", dimension: "sommeil", response_score_mapping: [0,1,2], trigger_rule: "always" }
+];
+nextQuestion();
 <p class="p1">// Vérifie si la question peut être posée</p>
 <p class="p1">function eligible(q) {</p>
 <p class="p1"><span class="Apple-converted-space">  </span>if (asked.includes(q.id)) return false;</p>
