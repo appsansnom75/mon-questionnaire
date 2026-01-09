@@ -1,0 +1,196 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta http-equiv="Content-Style-Type" content="text/css">
+  <title></title>
+  <meta name="Generator" content="Cocoa HTML Writer">
+  <meta name="CocoaVersion" content="2685.2">
+  <style type="text/css">
+    p.p1 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Helvetica}
+    p.p2 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Helvetica; min-height: 14.0px}
+    p.p3 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Helvetica; color: #000000; -webkit-text-stroke: #37c87b}
+    span.s1 {color: #000000; -webkit-text-stroke: 0px #000000}
+    span.s2 {font-kerning: none}
+  </style>
+</head>
+<body>
+<p class="p1">&lt;!DOCTYPE html&gt;</p>
+<p class="p1">&lt;html lang="fr"&gt;</p>
+<p class="p1">&lt;head&gt;</p>
+<p class="p1">&lt;meta charset="UTF-8"&gt;</p>
+<p class="p1">&lt;title&gt;Questionnaire Adaptatif&lt;/title&gt;</p>
+<p class="p1">&lt;style&gt;</p>
+<p class="p1">body { font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; }</p>
+<p class="p1">h2 { color: #333; }</p>
+<p class="p1">button { margin: 5px; padding: 10px 20px; font-size: 16px; cursor: pointer; }</p>
+<p class="p1">input { padding: 5px; font-size: 16px; margin-right: 10px; }</p>
+<p class="p1">&lt;/style&gt;</p>
+<p class="p1">&lt;/head&gt;</p>
+<p class="p1">&lt;body&gt;</p>
+<p class="p1">&lt;h2 id="title"&gt;Questionnaire&lt;/h2&gt;</p>
+<p class="p1">&lt;div id="question"&gt;&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1">&lt;script&gt;</p>
+<p class="p3"><span class="s1">const QUESTIONS_URL = "</span><span class="s2">https://xlncdpwghwqorjgkuecu.supabase.co</span><span class="s1">";<span class="Apple-converted-space"> </span></span></p>
+<p class="p1">const WORKER_URL = "https://compatibility-worker.appsansnom.workers.dev/";<span class="Apple-converted-space">   </span></p>
+<p class="p1">const MY_PROFILE = { securite: 0.7, autonomie: 0.4 };<span class="Apple-converted-space"> </span></p>
+<p class="p2"><br></p>
+<p class="p1">let questions = [];</p>
+<p class="p1">let asked = [];</p>
+<p class="p1">let answers = [];</p>
+<p class="p1">let scores = {};</p>
+<p class="p2"><br></p>
+<p class="p1">fetch(QUESTIONS_URL)</p>
+<p class="p1"><span class="Apple-converted-space">  </span>.then(r =&gt; r.json())</p>
+<p class="p1"><span class="Apple-converted-space">  </span>.then(q =&gt; { questions = q; nextQuestion(); });</p>
+<p class="p2"><br></p>
+<p class="p1">// Vérifie si la question peut être posée</p>
+<p class="p1">function eligible(q) {</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if (asked.includes(q.id)) return false;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if (!q.trigger_rule || q.trigger_rule === "always") return true;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>try {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const expr = q.trigger_rule.replace(/\b(\w+)\b/g, (_, d) =&gt; `(scores["${d}"]||0)`);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>return eval(expr);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>} catch(e) {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>console.error("Erreur trigger_rule question", q.id, e);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>return false;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">// Affiche la question et génère les réponses dynamiquement</p>
+<p class="p1">function renderQuestion() {</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const container = document.getElementById("question");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>container.innerHTML = "";</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const qText = document.createElement("p");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>qText.innerText = current.text;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>container.appendChild(qText);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const mapping = current.response_score_mapping || [];</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>// scale ou yesno ou choices</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(current.type === "scale") {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const labels = ["Pas du tout","Un peu","Beaucoup"];</p>
+<p class="p1"><span class="Apple-converted-space">    </span>labels.forEach((label, i) =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const score = mapping[i] !== undefined ? mapping[i] : i;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const btn = document.createElement("button");</p>
+<p class="p1"><span class="Apple-converted-space">      </span>btn.innerText = label;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>btn.onclick = () =&gt; recordAnswer(score);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>container.appendChild(btn);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>});</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}<span class="Apple-converted-space"> </span></p>
+<p class="p1"><span class="Apple-converted-space">  </span>else if(current.type === "yesno") {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const labels = current.options || ["Oui","Non"];</p>
+<p class="p1"><span class="Apple-converted-space">    </span>labels.forEach((label,i) =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const score = mapping[i] !== undefined ? mapping[i] : i;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const btn = document.createElement("button");</p>
+<p class="p1"><span class="Apple-converted-space">      </span>btn.innerText = label;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>btn.onclick = () =&gt; recordAnswer(score);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>container.appendChild(btn);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>});</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}<span class="Apple-converted-space"> </span></p>
+<p class="p1"><span class="Apple-converted-space">  </span>else if(current.type === "choices" &amp;&amp; current.options) {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>current.options.forEach((label,i) =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const score = mapping[i] !== undefined ? mapping[i] : i;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const btn = document.createElement("button");</p>
+<p class="p1"><span class="Apple-converted-space">      </span>btn.innerText = label;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>btn.onclick = () =&gt; recordAnswer(score);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>container.appendChild(btn);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>});</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}<span class="Apple-converted-space"> </span></p>
+<p class="p1"><span class="Apple-converted-space">  </span>else if(current.type === "text") {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const input = document.createElement("input");</p>
+<p class="p1"><span class="Apple-converted-space">    </span>input.type = "text";</p>
+<p class="p1"><span class="Apple-converted-space">    </span>input.id = "textAnswer";</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const btn = document.createElement("button");</p>
+<p class="p1"><span class="Apple-converted-space">    </span>btn.innerText = "Valider";</p>
+<p class="p1"><span class="Apple-converted-space">    </span>btn.onclick = () =&gt; recordAnswer(0); // texte libre = score 0</p>
+<p class="p1"><span class="Apple-converted-space">    </span>container.appendChild(input);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>container.appendChild(btn);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">// Enregistre la réponse</p>
+<p class="p1">function recordAnswer(val) {</p>
+<p class="p1"><span class="Apple-converted-space">  </span>answers.push({</p>
+<p class="p1"><span class="Apple-converted-space">    </span>dimension: current.dimension,</p>
+<p class="p1"><span class="Apple-converted-space">    </span>value: val,</p>
+<p class="p1"><span class="Apple-converted-space">    </span>weight: current.weight || 1</p>
+<p class="p1"><span class="Apple-converted-space">  </span>});</p>
+<p class="p1"><span class="Apple-converted-space">  </span>scores[current.dimension] = (scores[current.dimension] || 0) + val * (current.weight || 1);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>nextQuestion();</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">// Prochaine question</p>
+<p class="p1">function nextQuestion() {</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if (asked.length &gt;= 20) return finish();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const q = questions.find(eligible);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if (!q) return finish();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>asked.push(q.id);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>window.current = q;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>renderQuestion();</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">// Fin du questionnaire</p>
+<p class="p1">function finish() {</p>
+<p class="p1"><span class="Apple-converted-space">  </span>document.getElementById("title").innerText = "Calcul en cours…";</p>
+<p class="p1"><span class="Apple-converted-space">  </span>document.getElementById("question").innerText = "";</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>fetch(WORKER_URL, {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>method: "POST",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>body: JSON.stringify({ action: "profile", answers })</p>
+<p class="p1"><span class="Apple-converted-space">  </span>})</p>
+<p class="p1"><span class="Apple-converted-space">  </span>.then(r =&gt; r.json())</p>
+<p class="p1"><span class="Apple-converted-space">  </span>.then(profile =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>fetch(WORKER_URL, {</p>
+<p class="p1"><span class="Apple-converted-space">      </span>method: "POST",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>body: JSON.stringify({</p>
+<p class="p1"><span class="Apple-converted-space">        </span>action: "compatibility",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>me: MY_PROFILE,</p>
+<p class="p1"><span class="Apple-converted-space">        </span>friend: profile</p>
+<p class="p1"><span class="Apple-converted-space">      </span>})</p>
+<p class="p1"><span class="Apple-converted-space">    </span>})</p>
+<p class="p1"><span class="Apple-converted-space">    </span>.then(r =&gt; r.json())</p>
+<p class="p1"><span class="Apple-converted-space">    </span>.then(res =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">      </span>document.body.innerHTML = `&lt;h2&gt;Compatibilité : ${res.percent}%&lt;/h2&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div id="explanation"&gt;Chargement de l'explication...&lt;/div&gt;`;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>fetch("https://api.openai.com/v1/chat/completions", {</p>
+<p class="p1"><span class="Apple-converted-space">        </span>method: "POST",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>headers: {</p>
+<p class="p1"><span class="Apple-converted-space">          </span>"Content-Type": "application/json",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>"Authorization": "Bearer TON_OPENAI_API_KEY"</p>
+<p class="p1"><span class="Apple-converted-space">        </span>},</p>
+<p class="p1"><span class="Apple-converted-space">        </span>body: JSON.stringify({</p>
+<p class="p1"><span class="Apple-converted-space">          </span>model: "gpt-4",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>messages: [{</p>
+<p class="p1"><span class="Apple-converted-space">            </span>role: "user",</p>
+<p class="p1"><span class="Apple-converted-space">            </span>content: `</p>
+<p class="p1">Explique de manière simple et bienveillante</p>
+<p class="p1">pourquoi deux personnes ont une compatibilité de ${res.percent} %.</p>
+<p class="p2"><br></p>
+<p class="p1">Profil A : ${JSON.stringify(MY_PROFILE)}</p>
+<p class="p1">Profil B : ${JSON.stringify(profile)}</p>
+<p class="p1">`</p>
+<p class="p1"><span class="Apple-converted-space">          </span>}],</p>
+<p class="p1"><span class="Apple-converted-space">          </span>max_tokens: 200</p>
+<p class="p1"><span class="Apple-converted-space">        </span>})</p>
+<p class="p1"><span class="Apple-converted-space">      </span>})</p>
+<p class="p1"><span class="Apple-converted-space">      </span>.then(r =&gt; r.json())</p>
+<p class="p1"><span class="Apple-converted-space">      </span>.then(data =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">        </span>const explanation = data.choices[0].message.content;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>document.getElementById("explanation").innerText = explanation;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>})</p>
+<p class="p1"><span class="Apple-converted-space">      </span>.catch(e =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">        </span>console.error(e);</p>
+<p class="p1"><span class="Apple-converted-space">        </span>document.getElementById("explanation").innerText = "Impossible de charger l'explication IA.";</p>
+<p class="p1"><span class="Apple-converted-space">      </span>});</p>
+<p class="p1"><span class="Apple-converted-space">    </span>});</p>
+<p class="p1"><span class="Apple-converted-space">  </span>});</p>
+<p class="p1">}</p>
+<p class="p1">&lt;/script&gt;</p>
+<p class="p1">&lt;/body&gt;</p>
+<p class="p1">&lt;/html&gt;</p>
+</body>
+</html>
