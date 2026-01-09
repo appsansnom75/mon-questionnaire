@@ -15,7 +15,8 @@ input { padding: 5px; font-size: 16px; margin-right: 10px; }
 <div id="question">Chargement…</div>
 
 <script type="module">
-const WORKER_URL = 'https://compatibility-worker.appsansnom.workers.dev/'
+// ----- Worker URL -----
+const WORKER_URL = "https://compatibility-worker.appsansnom.workers.dev/";
 
 // ----- Variables -----
 let questions = [];
@@ -28,11 +29,12 @@ let current = null;
 async function loadQuestions() {
   try {
     const res = await fetch(WORKER_URL)
-    if (!res.ok) throw new Error('Erreur fetch Worker')
     questions = await res.json()
-    if (!Array.isArray(questions) || questions.length === 0) throw new Error('Pas de questions reçues')
+    if (!Array.isArray(questions) || questions.length === 0) {
+      throw new Error("Pas de questions récupérées")
+    }
     nextQuestion()
-  } catch (e) {
+  } catch(e) {
     console.error("Erreur chargement questions", e)
     document.getElementById("question").innerText = "Impossible de charger les questions."
   }
@@ -40,12 +42,14 @@ async function loadQuestions() {
 
 // ----- Vérifie si question éligible -----
 function eligible(q) {
-  if (asked.includes(q.ID)) return false
-  if (!q.trigger_rule || q.trigger_rule === "always") return true
-
+  if (asked.includes(q.ID)) return false;
+  if (!q.trigger_rule || q.trigger_rule === "always") return true;
   try {
-    const expr = q.trigger_rule.replace(/\b(\w+)\b/g, (_, d) => `(scores["${d}"]||0)`)
-    return eval(expr)
+    // Exemple simple pour test : ignore les règles complexes pour l'instant
+    if (q.trigger_rule.startsWith("score_high") || q.trigger_rule.startsWith("contradiction") || q.trigger_rule.startsWith("priority")) {
+      return true; // pour test
+    }
+    return eval(q.trigger_rule.replace(/\b(\w+)\b/g, (_, d) => `(scores["${d}"]||0)`));
   } catch(e) {
     console.error("Erreur trigger_rule question", q.ID, e)
     return false
@@ -58,53 +62,35 @@ function renderQuestion() {
   container.innerHTML = ""
 
   const qText = document.createElement("p")
-  qText.innerText = current.Question
+  qText.innerText = questions[current].Question
   container.appendChild(qText)
 
-  const mapping = parseMapping(current.response_score_mapping)
+  const mappingStr = questions[current].response_score_mapping
+  const mapping = mappingStr.split('|').map(s => s.trim().split('=')).map(([label,val]) => ({label,val: parseFloat(val)}))
 
-  if(current.type === "scale" || current.type === "yesno" || current.type === "choices" || mapping.length > 0) {
-    mapping.forEach(({label, score}) => {
-      const btn = document.createElement("button")
-      btn.innerText = label
-      btn.onclick = () => recordAnswer(score)
-      container.appendChild(btn)
-    })
-  } else {
-    const input = document.createElement("input")
-    input.type = "text"
-    input.id = "textAnswer"
+  mapping.forEach(({label, val}) => {
     const btn = document.createElement("button")
-    btn.innerText = "Valider"
-    btn.onclick = () => recordAnswer(0)
-    container.appendChild(input)
+    btn.innerText = label
+    btn.onclick = () => recordAnswer(val)
     container.appendChild(btn)
-  }
-}
-
-// ----- Convertir response_score_mapping en tableau -----
-function parseMapping(mappingStr) {
-  if(!mappingStr) return []
-  return mappingStr.split('|').map(s => {
-    const [label, score] = s.split('=').map(x => x.trim())
-    return { label, score: parseFloat(score) }
   })
 }
 
 // ----- Enregistrer réponse -----
 function recordAnswer(val) {
-  answers.push({ dimension: current.Dimension, value: val, weight: current.weight || 1 })
-  scores[current.Dimension] = (scores[current.Dimension] || 0) + val * (current.weight || 1)
+  const q = questions[current]
+  answers.push({ dimension: q.Dimension, value: val, weight: q.weight || 1 })
+  scores[q.Dimension] = (scores[q.Dimension] || 0) + val * (q.weight || 1)
   nextQuestion()
 }
 
 // ----- Prochaine question -----
 function nextQuestion() {
   if (asked.length >= questions.length) return finish()
-  const q = questions.find(eligible)
-  if (!q) return finish()
-  asked.push(q.ID)
-  current = q
+  const idx = questions.findIndex((q, i) => i >= asked.length && eligible(q))
+  if (idx === -1) return finish()
+  asked.push(idx)
+  current = idx
   renderQuestion()
 }
 
@@ -114,13 +100,23 @@ async function finish() {
   document.getElementById("question").innerText = ""
 
   try {
-    // Ici tu peux envoyer answers à ton Worker pour compatibilité ou autre traitement
-    // Pour l'instant on affiche juste les scores
-    let html = "<h2>Résultats :</h2>"
-    for(const dim in scores){
-      html += `<p>${dim} : ${scores[dim]}</p>`
-    }
-    document.body.innerHTML = html
+    const workerRes = await fetch(WORKER_URL, {
+      method: "POST",
+      body: JSON.stringify({ action: "profile", answers }),
+      headers: { "Content-Type": "application/json" }
+    })
+    const profile = await workerRes.json()
+
+    const compatRes = await fetch(WORKER_URL, {
+      method: "POST",
+      body: JSON.stringify({ action: "compatibility", me: profile, friend: profile }),
+      headers: { "Content-Type": "application/json" }
+    })
+    const res = await compatRes.json()
+
+    document.body.innerHTML = `<h2>Compatibilité : ${res.percent ?? 0}%</h2>
+      <div id="explanation">Explication : ${res.explanation ?? "Non disponible"}</div>`
+
   } catch(e) {
     console.error(e)
     document.getElementById("question").innerText = "Impossible de calculer la compatibilité."
@@ -129,7 +125,6 @@ async function finish() {
 
 // ----- Lancement -----
 loadQuestions()
-
 </script>
 </body>
 </html>
