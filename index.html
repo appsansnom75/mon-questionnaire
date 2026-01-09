@@ -15,8 +15,7 @@ input { padding: 5px; font-size: 16px; margin-right: 10px; }
 <div id="question">Chargement…</div>
 
 <script type="module">
-
-const WORKER_URL = "https://compatibility-worker.appsansnom.workers.dev/";
+const WORKER_URL = 'https://compatibility-worker.appsansnom.workers.dev/'
 
 // ----- Variables -----
 let questions = [];
@@ -28,114 +27,108 @@ let current = null;
 // ----- Charger les questions depuis le Worker -----
 async function loadQuestions() {
   try {
-    const res = await fetch(WORKER_URL, {
-      method: "POST",
-      body: JSON.stringify({ action: "get_questions" }),
-      headers: { "Content-Type": "application/json" }
-    });
-    questions = await res.json();
-    if (!Array.isArray(questions) || questions.length === 0) throw new Error("Aucune question récupérée");
-    nextQuestion();
-  } catch(e) {
-    console.error("Erreur chargement questions", e);
-    document.getElementById("question").innerText = "Impossible de charger les questions.";
+    const res = await fetch(WORKER_URL)
+    if (!res.ok) throw new Error('Erreur fetch Worker')
+    questions = await res.json()
+    if (!Array.isArray(questions) || questions.length === 0) throw new Error('Pas de questions reçues')
+    nextQuestion()
+  } catch (e) {
+    console.error("Erreur chargement questions", e)
+    document.getElementById("question").innerText = "Impossible de charger les questions."
   }
 }
 
 // ----- Vérifie si question éligible -----
 function eligible(q) {
-  if (asked.includes(q.ID)) return false;
-  if (!q.trigger_rule || q.trigger_rule === "always") return true;
+  if (asked.includes(q.ID)) return false
+  if (!q.trigger_rule || q.trigger_rule === "always") return true
 
   try {
-    // Exemples simples pour test : on ignore les règles complexes
-    if (q.trigger_rule.startsWith("score_high") || q.trigger_rule.startsWith("priority_dimension") || q.trigger_rule.startsWith("contradiction") || q.trigger_rule.startsWith("extreme_answer")) {
-      return true;
-    }
-    return eval(q.trigger_rule.replace(/\b(\w+)\b/g, (_, d) => `(scores["${d}"]||0)`));
+    const expr = q.trigger_rule.replace(/\b(\w+)\b/g, (_, d) => `(scores["${d}"]||0)`)
+    return eval(expr)
   } catch(e) {
-    console.error("Erreur trigger_rule question", q.ID, e);
-    return false;
+    console.error("Erreur trigger_rule question", q.ID, e)
+    return false
   }
 }
 
 // ----- Afficher question -----
 function renderQuestion() {
-  const container = document.getElementById("question");
-  container.innerHTML = "";
+  const container = document.getElementById("question")
+  container.innerHTML = ""
 
-  const qText = document.createElement("p");
-  qText.innerText = current.Question;
-  container.appendChild(qText);
+  const qText = document.createElement("p")
+  qText.innerText = current.Question
+  container.appendChild(qText)
 
-  const mapping = parseMapping(current.response_score_mapping);
+  const mapping = parseMapping(current.response_score_mapping)
 
-  Object.entries(mapping).forEach(([label, score]) => {
-    const btn = document.createElement("button");
-    btn.innerText = label;
-    btn.onclick = () => recordAnswer(score);
-    container.appendChild(btn);
-  });
+  if(current.type === "scale" || current.type === "yesno" || current.type === "choices" || mapping.length > 0) {
+    mapping.forEach(({label, score}) => {
+      const btn = document.createElement("button")
+      btn.innerText = label
+      btn.onclick = () => recordAnswer(score)
+      container.appendChild(btn)
+    })
+  } else {
+    const input = document.createElement("input")
+    input.type = "text"
+    input.id = "textAnswer"
+    const btn = document.createElement("button")
+    btn.innerText = "Valider"
+    btn.onclick = () => recordAnswer(0)
+    container.appendChild(input)
+    container.appendChild(btn)
+  }
 }
 
-// ----- Convertir "Pas du tout=0 | Un peu=1 | Beaucoup=2" en objet -----
+// ----- Convertir response_score_mapping en tableau -----
 function parseMapping(mappingStr) {
-  const mapping = {};
-  mappingStr.split('|').forEach(part => {
-    const [label, value] = part.split('=').map(s => s.trim());
-    mapping[label] = Number(value);
-  });
-  return mapping;
+  if(!mappingStr) return []
+  return mappingStr.split('|').map(s => {
+    const [label, score] = s.split('=').map(x => x.trim())
+    return { label, score: parseFloat(score) }
+  })
 }
 
 // ----- Enregistrer réponse -----
 function recordAnswer(val) {
-  answers.push({ dimension: current.Dimension, value: val, weight: current.weight || 1 });
-  scores[current.Dimension] = (scores[current.Dimension] || 0) + val * (current.weight || 1);
-  nextQuestion();
+  answers.push({ dimension: current.Dimension, value: val, weight: current.weight || 1 })
+  scores[current.Dimension] = (scores[current.Dimension] || 0) + val * (current.weight || 1)
+  nextQuestion()
 }
 
 // ----- Prochaine question -----
 function nextQuestion() {
-  if (asked.length >= questions.length) return finish();
-  const q = questions.find(eligible);
-  if (!q) return finish();
-  asked.push(q.ID);
-  current = q;
-  renderQuestion();
+  if (asked.length >= questions.length) return finish()
+  const q = questions.find(eligible)
+  if (!q) return finish()
+  asked.push(q.ID)
+  current = q
+  renderQuestion()
 }
 
 // ----- Fin du questionnaire -----
 async function finish() {
-  document.getElementById("title").innerText = "Calcul en cours…";
-  document.getElementById("question").innerText = "";
+  document.getElementById("title").innerText = "Calcul en cours…"
+  document.getElementById("question").innerText = ""
 
   try {
-    const workerRes = await fetch(WORKER_URL, {
-      method: "POST",
-      body: JSON.stringify({ action: "profile", answers }),
-      headers: { "Content-Type": "application/json" }
-    });
-    const profile = await workerRes.json();
-
-    const compatRes = await fetch(WORKER_URL, {
-      method: "POST",
-      body: JSON.stringify({ action: "compatibility", me: {securite:0.7, autonomie:0.4}, friend: profile }),
-      headers: { "Content-Type": "application/json" }
-    });
-    const res = await compatRes.json();
-
-    document.body.innerHTML = `<h2>Compatibilité : ${res.percent ?? 0}%</h2>
-      <div id="explanation">Explication générée...</div>`;
-
+    // Ici tu peux envoyer answers à ton Worker pour compatibilité ou autre traitement
+    // Pour l'instant on affiche juste les scores
+    let html = "<h2>Résultats :</h2>"
+    for(const dim in scores){
+      html += `<p>${dim} : ${scores[dim]}</p>`
+    }
+    document.body.innerHTML = html
   } catch(e) {
-    console.error(e);
-    document.getElementById("question").innerText = "Impossible de calculer la compatibilité.";
+    console.error(e)
+    document.getElementById("question").innerText = "Impossible de calculer la compatibilité."
   }
 }
 
 // ----- Lancement -----
-loadQuestions();
+loadQuestions()
 
 </script>
 </body>
