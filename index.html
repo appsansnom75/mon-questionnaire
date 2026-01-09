@@ -18,23 +18,55 @@ input { padding: 5px; font-size: 16px; margin-right: 10px; }
 
 const WORKER_URL = "https://compatibility-worker.appsansnom.workers.dev/"
 
-let questions = [
+// --- Variables globales ---
+let questions = []    // sera chargé depuis Supabase via le Worker si nécessaire
+let asked = [], answers = [], scores = {}, current = null
+
+// --- Exemple pour test local (remplace par fetch depuis Supabase réel) ---
+questions = [
   { id:1, text:"Aimes-tu le chocolat ?", type:"yesno", options:["Oui","Non"], dimension:"gout", trigger_rule:"always" },
   { id:2, text:"Es-tu plutôt matin ou soir ?", type:"choices", options:["Matin","Soir"], dimension:"rythme", trigger_rule:"always" },
   { id:3, text:"Te considères-tu autonome ?", type:"scale", dimension:"autonomie", response_score_mapping:[0,1,2], trigger_rule:"always" }
+  // ajoute ici toutes tes questions depuis Supabase
 ]
 
-let asked=[], answers=[], scores={}, current=null
-
+// --- Fonction qui détermine si une question est éligible ---
 function eligible(q){
-  if(asked.includes(q.id)) return false
-  if(!q.trigger_rule || q.trigger_rule==="always") return true
+  if(asked.includes(q.id)) return false;
+  if(!q.trigger_rule || q.trigger_rule==="always") return true;
+
   try{
-    const expr = q.trigger_rule.replace(/\b(\w+)\b/g,(_,d)=>`(scores["${d}"]||0)`)
-    return eval(expr)
-  }catch{return false}
+    const parts = q.trigger_rule.split(":")
+    const type = parts[0]
+
+    switch(type){
+      case "always": return true
+
+      case "score_high":
+        const dim = parts[1]
+        const threshold = parseFloat(parts[2] || "0")
+        return (scores[dim] || 0) >= threshold
+
+      case "contradiction":
+        const cDim = parts[1]
+        return (scores[cDim] || 0) < 0.5 // exemple simple de contradiction
+
+      case "priority_dimension":
+        const pDim = parts[1]
+        return (scores[pDim] || 0) > 0      // si déjà un score > 0
+
+      case "extreme_answer":
+        return answers.some(a => a.value === 2) // si réponse extrême
+
+      default: return true
+    }
+  } catch(e){
+    console.warn("Erreur trigger_rule pour question", q.id, e)
+    return true
+  }
 }
 
+// --- Affiche la question actuelle ---
 function renderQuestion(){
   const container = document.getElementById("question")
   container.innerHTML=""
@@ -46,42 +78,55 @@ function renderQuestion(){
   if(current.type==="scale"){
     ["Pas du tout","Un peu","Beaucoup"].forEach((label,i)=>{
       const btn = document.createElement("button")
-      btn.innerText=label
-      btn.onclick=()=>recordAnswer(mapping[i]??i)
+      btn.innerText = label
+      btn.onclick = ()=>recordAnswer(mapping[i] ?? i)
       container.appendChild(btn)
     })
-  } else {
+  } else if(current.type==="yesno" || current.type==="choices"){
     current.options.forEach((label,i)=>{
       const btn = document.createElement("button")
-      btn.innerText=label
-      btn.onclick=()=>recordAnswer(mapping[i]??i)
+      btn.innerText = label
+      btn.onclick = ()=>recordAnswer(mapping[i] ?? i)
       container.appendChild(btn)
     })
+  } else if(current.type==="text"){
+    const input = document.createElement("input")
+    input.type = "text"
+    input.id = "textAnswer"
+    const btn = document.createElement("button")
+    btn.innerText = "Valider"
+    btn.onclick = ()=>recordAnswer(0) // texte libre = 0
+    container.appendChild(input)
+    container.appendChild(btn)
   }
 }
 
+// --- Enregistre une réponse ---
 function recordAnswer(val){
-  answers.push({dimension:current.dimension,value:val})
-  scores[current.dimension]=(scores[current.dimension]||0)+val
+  answers.push({dimension: current.dimension, value: val})
+  scores[current.dimension] = (scores[current.dimension] || 0) + val
   nextQuestion()
 }
 
+// --- Prochaine question ---
 function nextQuestion(){
-  if(asked.length>=questions.length) return finish()
-  const q=questions.find(eligible)
+  const remaining = questions.filter(q => !asked.includes(q.id))
+  const q = remaining.find(eligible)
   if(!q) return finish()
   asked.push(q.id)
-  current=q
+  current = q
   renderQuestion()
 }
 
+// --- Fin du questionnaire ---
 async function finish(){
   document.getElementById("title").innerText="Calcul en cours…"
   document.getElementById("question").innerText=""
 
   try{
-    const MY_PROFILE={securite:0.7,autonomie:0.4}
+    const MY_PROFILE = { securite:0.7, autonomie:0.4 }
 
+    // --- Calcul du profil depuis le Worker ---
     const r1 = await fetch(WORKER_URL,{
       method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -89,14 +134,15 @@ async function finish(){
     })
     const profile = await r1.json()
 
+    // --- Calcul compatibilité et explication OpenAI ---
     const r2 = await fetch(WORKER_URL,{
       method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({action:"compatibility",me:MY_PROFILE,friend:profile})
+      body:JSON.stringify({action:"compatibility", me:MY_PROFILE, friend:profile})
     })
     const res = await r2.json()
 
-    document.body.innerHTML=`
+    document.body.innerHTML = `
       <h2>Compatibilité : ${res.percent ?? 0}%</h2>
       <p>${res.explanation ?? "Aucune explication disponible."}</p>
     `
@@ -107,6 +153,7 @@ async function finish(){
   }
 }
 
+// --- Lancement ---
 nextQuestion()
 
 </script>
