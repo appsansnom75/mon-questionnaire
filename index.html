@@ -15,14 +15,6 @@ input { padding: 5px; font-size: 16px; margin-right: 10px; }
 <div id="question">Chargement…</div>
 
 <script type="module">
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
-
-// --- Supabase ---
-const SUPABASE_URL = 'https://xlncdpwghwqorjgkuecu.supabase.co'
-const SUPABASE_KEY = 'sb_publishable_jm2lHeMocd2wkyceFc50WA_jfKaWBrr'
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
-
-// --- Worker Cloudflare ---
 const WORKER_URL = "https://compatibility-worker.appsansnom.workers.dev/"
 
 let questions = [], asked=[], answers=[], scores={}, current=null
@@ -138,16 +130,19 @@ async function finish(){
   }
 }
 
-// --- Charger questions Supabase ---
+// --- Charger questions via Worker ---
 async function loadQuestions(){
   try{
-    const {data,error} = await supabase.from('questions').select('*')
-    if(error) throw error
-    questions = data
+    const res = await fetch(WORKER_URL,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({action:"get_questions"})
+    })
+    questions = await res.json()
     nextQuestion()
   }catch(e){
     console.error("Impossible de charger les questions",e)
-    document.getElementById("question").innerText="Impossible de charger les questions depuis Supabase."
+    document.getElementById("question").innerText="Impossible de charger les questions."
   }
 }
 
