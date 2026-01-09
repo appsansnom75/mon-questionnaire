@@ -22,6 +22,7 @@ const SUPABASE_URL = 'https://xlncdpwghwqorjgkuecu.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_jm2lHeMocd2wkyceFc50WA_jfKaWBrr'
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
+// --- Worker Cloudflare ---
 const WORKER_URL = "https://compatibility-worker.appsansnom.workers.dev/"
 
 let questions = [], asked=[], answers=[], scores={}, current=null
@@ -112,6 +113,7 @@ async function finish(){
 
   try{
     const MY_PROFILE={securite:0.7,autonomie:0.4}
+
     const r1 = await fetch(WORKER_URL,{
       method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -151,7 +153,6 @@ async function loadQuestions(){
 
 // --- Lancement ---
 loadQuestions()
-
 </script>
 </body>
 </html>
